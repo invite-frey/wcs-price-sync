@@ -3,7 +3,7 @@
 Plugin Name: WCS Price Sync with Renewal Buffer
 Plugin URI: https://invite.hk
 Description: Automatically updates subscription prices to match current product prices when the product is updated, but only if there's a buffer time before the renewal reminder (based on your configured reminder timing). This prevents price changes after reminders are sent or imminent.
-Version: 1.0
+Version: 1.4
 Author: Frey Mansikkaniemi
 Author URI: https://frey.hk
 License: GPL v2 or later
@@ -52,7 +52,6 @@ function its_wcs_price_sync_init() {
     }
 
     // 2. WooCommerce Subscriptions check
-    // WC_Subscriptions is the correct main class name (still true in recent versions)
     if ( ! class_exists( 'WC_Subscriptions' ) ) {
         add_action( 'admin_notices', 'its_wcs_price_sync_admin_notice_subscriptions_missing' );
         return;
@@ -71,6 +70,7 @@ function its_wcs_price_sync_init() {
         );
         return $settings;
     }
+    
     // Hook into product save to sync prices with buffer check.
     add_action( 'woocommerce_before_product_object_save', 'wcs_sync_subscription_prices_with_buffer', 20, 2 );
     function wcs_sync_subscription_prices_with_buffer( $product, $data_store ) {
@@ -79,22 +79,13 @@ function its_wcs_price_sync_init() {
             return; // Only subscription products.
         }
         $post_id = $product->get_id();
-        // Get new price (for simple products; adjust for variables if needed).
 
         $transient_key = 'wc_price_change_lock_' . $post_id;
-
-        // Get a lock / flag (expires quickly)
         $already_processed = get_transient( $transient_key );
-
         $new_price = $product->get_price('edit');
     
-        // Compare prices
         if ( $already_processed ) {
-            //error_log( 'Processing price change' );
-
-            // Proceed assuming price might have changed.
             $buffer_days = (int) get_option( 'wcs_price_buffer_days', 0 );
-            // Get all active subscriptions with this product.
             $subscriptions = wcs_get_subscriptions( 
                 array(
                     'product_id'           => $post_id,
@@ -105,95 +96,137 @@ function its_wcs_price_sync_init() {
             if ( empty( $subscriptions ) ) {
                 return;
             }
-            $current_time = current_time( 'timestamp', true ); // UTC timestamp.
+            $current_time = current_time( 'timestamp', true );
             foreach ( $subscriptions as $subscription ) {
                 $next_payment_time = $subscription->get_time( 'next_payment' );
                 if ( ! $next_payment_time ) {
-                    continue; // No next payment.
+                    continue;
                 }
                 $buffer_time = $next_payment_time - ( $buffer_days * DAY_IN_SECONDS );
                 if ( $current_time >= $buffer_time ) {
-                    // Within buffer period: skip update to lock in price.
                     continue;
                 }
-                // Update the line item.
                 foreach ( $subscription->get_items() as $item_id => $item ) {
                     if ( $item->get_product_id() == $post_id ) {
                         $quantity = $item->get_quantity();
-                        // Remove old item.
                         $subscription->remove_item( $item_id );
-                        // Add new with current product data (pulls new price).
-                        
                         $subscription->add_product( $product, $quantity );
                         break;
                     }
                 }
-                // Recalculate and save.
                 $subscription->calculate_taxes();
                 $subscription->calculate_totals();
                 $subscription->save();
-                // Optional: Add note.
                 $subscription->add_order_note( __( 'Subscription price updated to match current product price.', 'wcs-price-sync' ) );
-                // Optional: Trigger notification if you have a system for it.
-                // e.g., do_action( 'wcs_subscription_price_updated', $subscription );
-            }delete_transient( $transient_key );
+            }
+            delete_transient( $transient_key );
         } else {
-            // First call → set flag for next invocation (very short TTL)
-            set_transient( $transient_key, '1', 30 ); // 30 seconds is plenty
+            set_transient( $transient_key, '1', 30 );
         }
     }
 
-    // Add custom bulk action
-    add_filter( 'bulk_actions-edit-shop_subscription', 'wcs_add_price_sync_bulk_action' );
-
-    function wcs_add_price_sync_bulk_action( $bulk_actions ) {
-        $bulk_actions['wcs_sync_prices'] = __( 'Sync Prices (with Buffer)', 'wcs-price-sync' );
-        return $bulk_actions;
+    // Add custom bulk action using JavaScript
+    add_action( 'admin_footer-edit.php', 'wcs_add_price_sync_bulk_action_script' );
+    
+    function wcs_add_price_sync_bulk_action_script() {
+        global $post_type;
+        
+        if ( 'shop_subscription' !== $post_type ) {
+            return;
+        }
+        ?>
+        <script type="text/javascript">
+            jQuery(document).ready(function($) {
+                $('<option>').val('wcs_sync_prices').text('<?php _e( 'Sync Prices (with Buffer)', 'wcs-price-sync' ); ?>').appendTo("select[name='action']");
+                $('<option>').val('wcs_sync_prices').text('<?php _e( 'Sync Prices (with Buffer)', 'wcs-price-sync' ); ?>').appendTo("select[name='action2']");
+            });
+        </script>
+        <?php
     }
 
-    // Handle the bulk action
-    add_filter( 'handle_bulk_actions-edit-shop_subscription', 'wcs_handle_price_sync_bulk_action', 10, 3 );
-
-    function wcs_handle_price_sync_bulk_action( $redirect_to, $action, $post_ids ) {
+    // Intercept the request early - before WooCommerce redirects
+    add_action( 'admin_init', 'wcs_intercept_bulk_action', 1 );
+    
+    function wcs_intercept_bulk_action() {
+        // Check if this is our bulk action
+        if ( ! isset( $_REQUEST['action'] ) && ! isset( $_REQUEST['action2'] ) ) {
+            return;
+        }
+        
+        $action = '';
+        if ( isset( $_REQUEST['action'] ) && $_REQUEST['action'] === 'wcs_sync_prices' ) {
+            $action = 'wcs_sync_prices';
+        } elseif ( isset( $_REQUEST['action2'] ) && $_REQUEST['action2'] === 'wcs_sync_prices' ) {
+            $action = 'wcs_sync_prices';
+        }
+        
         if ( $action !== 'wcs_sync_prices' ) {
-            return $redirect_to;
+            return;
         }
-
+        
+        // Make sure we're on the right page
+        if ( ! isset( $_REQUEST['post_type'] ) || $_REQUEST['post_type'] !== 'shop_subscription' ) {
+            return;
+        }
+        
+        // Security check
+        if ( ! isset( $_REQUEST['post'] ) || ! is_array( $_REQUEST['post'] ) ) {
+            error_log( "No posts selected" );
+            return;
+        }
+        
+        check_admin_referer( 'bulk-posts' );
+        
+        // Get selected subscription IDs
+        $post_ids = array_map( 'intval', $_REQUEST['post'] );
         $buffer_days = (int) get_option( 'wcs_price_buffer_days', 0 );
         $current_time = current_time( 'timestamp', true );
         $updated_count = 0;
 
         foreach ( $post_ids as $subscription_id ) {
+            
             $subscription = wcs_get_subscription( $subscription_id );
-            if ( ! $subscription || ! $subscription->has_status( 'active' ) ) {
+            if ( ! $subscription ) {
+                error_log( "Failed to get subscription object for ID: {$subscription_id}" );
+                continue;
+            }
+            
+            if ( ! $subscription->has_status( 'active' ) ) {
+                //Subscription is not active
                 continue;
             }
 
             $next_payment_time = $subscription->get_time( 'next_payment' );
             if ( ! $next_payment_time ) {
+                //Subscription has no next payment date
                 continue;
             }
 
             $buffer_time = $next_payment_time - ( $buffer_days * DAY_IN_SECONDS );
             if ( $current_time >= $buffer_time ) {
-                continue; // Skip if within buffer
+                //Subscription is within buffer period
+                continue;
             }
 
             $updated = false;
 
             foreach ( $subscription->get_items() as $item ) {
                 $product = $item->get_product();
-                if ( ! $product || ! WC_Subscriptions_Product::is_subscription( $product ) ) {
+                if ( ! $product ) {
+                    error_log( "No product found for item in subscription {$subscription_id}" );
+                    continue;
+                }
+                
+                if ( ! WC_Subscriptions_Product::is_subscription( $product ) ) {
+                    error_log( "Product {$product->get_id()} is not a subscription product" );
                     continue;
                 }
 
+                $old_price = $item->get_total() / $item->get_quantity();
                 $new_price = $product->get_price( 'edit' );
                 $quantity  = $item->get_quantity();
-
                 $item->set_subtotal( $new_price * $quantity );
                 $item->set_total( $new_price * $quantity );
-                $item->update_meta_data( '_line_subtotal', wc_format_decimal( $new_price * $quantity ) );
-                $item->update_meta_data( '_line_total', wc_format_decimal( $new_price * $quantity ) );
                 $item->save();
 
                 $updated = true;
@@ -204,20 +237,25 @@ function its_wcs_price_sync_init() {
                 $subscription->save();
                 $subscription->add_order_note( __( 'Manual price sync applied (with buffer respected).', 'wcs-price-sync' ) );
                 $updated_count++;
+
             }
         }
+        
 
-        $redirect_to = add_query_arg(
-            array(
-                'wcs_price_sync_updated' => $updated_count,
-            ),
-            $redirect_to
-        );
-
-        return $redirect_to;
+        // Redirect back to the subscriptions list with success message
+        $sendback = remove_query_arg( array( 'action', 'action2', 'post', '_wpnonce', '_wp_http_referer', 'bulk_action', '_wcs_product', '_payment_method', '_customer_user', 'paged', 's' ), wp_get_referer() );
+        if ( ! $sendback ) {
+            $sendback = admin_url( 'edit.php' );
+            $sendback = add_query_arg( 'post_type', 'shop_subscription', $sendback );
+            $sendback = add_query_arg( 'post_status', 'wc-active', $sendback );
+        }
+        $sendback = add_query_arg( 'wcs_price_sync_updated', $updated_count, $sendback );
+        
+        wp_redirect( $sendback );
+        exit;
     }
 
-    // Optional: Admin notice after bulk action
+    // Admin notice after bulk action
     add_action( 'admin_notices', 'wcs_price_sync_bulk_notice' );
 
     function wcs_price_sync_bulk_notice() {

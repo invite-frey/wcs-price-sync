@@ -1,14 +1,14 @@
 # WCS Price Sync with Renewal Buffer
 
 **Plugin Name:** WCS Price Sync with Renewal Buffer  
-**Stable tag:** 1.1  
+**Stable tag:** 2.0  
 **Requires at least:** WordPress 5.5, WooCommerce 8.0, WooCommerce Subscriptions 5.0  
 **Tested up to:** WordPress 6.7, WooCommerce 9.5, WooCommerce Subscriptions 6.8  
 **Requires PHP:** 7.4  
 **License:** GPLv2 or later  
 **License URI:** https://www.gnu.org/licenses/gpl-2.0.html
 
-Automatically syncs subscription line item prices to the current product price **only when safe** — i.e. only when there is still enough time before the next renewal (configurable buffer period).
+Automatically syncs subscription line item prices to the current product price **only when safe** — i.e. only when there is still enough time before the next renewal (earlier than the period defined by the built-in Renewal timing setting).
 
 Prevents price changes from applying after renewal reminder emails have already been sent (or are about to be sent), avoiding customer confusion and support tickets.
 
@@ -22,7 +22,6 @@ This plugin adds that safety buffer logic.
 
 ## Features
 
-- Adds a **"Price Update Buffer Days"** setting under **WooCommerce → Settings → Subscriptions**
 - When you update & save a subscription product → automatically updates **active** subscriptions using that product
 - Skips update if the next payment date is within the buffer window (e.g. 7 days)
 - Respects your existing **renewal reminder timing** (set buffer = your reminder days)
@@ -63,8 +62,6 @@ Done.
 **Does it work with variable subscriptions?**  
 Currently only simple subscription products are fully supported (pulls `$product->get_price()`). Variable support would require choosing which variation — PRs welcome.
 
-**What happens if buffer is set to 0?**  
-Price updates happen immediately on every product save (same as no buffer).
 
 **Why isn't the price updating even when outside buffer?**  
 Make sure:
@@ -74,7 +71,7 @@ Make sure:
 - You're editing and **saving** the product (not just changing price in quick edit)
 
 **I want to force-update even inside buffer — can I?**  
-Not currently. You can temporarily set buffer to 0, update products, then set it back (or use the bulk action carefully).
+Not currently.
 
 ## Contributing
 

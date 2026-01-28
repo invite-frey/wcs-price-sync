@@ -3,7 +3,7 @@
 Plugin Name: WCS Price Sync with Dual Renewal Notifications
 Plugin URI: https://invite.hk
 Description: Automatically updates subscription prices to match current product prices with buffer protection. Also extends WCS to send two renewal notifications: one at the configured timing and another at half that time.
-Version: 2.1
+Version: 2.2
 Author: Frey Mansikkaniemi
 Author URI: https://frey.hk
 License: GPL v2 or later

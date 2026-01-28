@@ -1,7 +1,7 @@
 # WCS Price Sync with Renewal Buffer
 
 **Plugin Name:** WCS Price Sync with Renewal Buffer  
-**Stable tag:** 2.0  
+**Stable tag:** 2.2  
 **Requires at least:** WordPress 5.5, WooCommerce 8.0, WooCommerce Subscriptions 5.0  
 **Tested up to:** WordPress 6.7, WooCommerce 9.5, WooCommerce Subscriptions 6.8  
 **Requires PHP:** 7.4  

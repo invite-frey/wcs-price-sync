@@ -29,7 +29,7 @@ This plugin adds that safety buffer logic.
 - Adds order note when price is updated
 - Lightweight — no cron jobs, no extra tables
 - Safe double-save prevention (transient lock)
-- Adds an additional reminder notification half say between the renewal reminder timing and expiration.
+- Adds an additional reminder notification half way between the renewal reminder timing and expiration.
 
 ## Installation
 

@@ -1,11 +1,11 @@
 <?php
 /*
 Plugin Name: WCS Price Sync
-Plugin URI: https://invite.hk
+Plugin URI: https://github.com/invite-frey/wcs-price-sync-with-renewal-buffer
 Description: Automatically updates subscription prices to match current product prices, with buffer protection to avoid changes too close to the next renewal. Includes a manual bulk-sync action on the subscriptions list.
 Version: 3.0
-Author: Frey Mansikkaniemi
-Author URI: https://frey.hk
+Author: Invite Services / Frey Mansikkaniemi
+Author URI: https://invite.hk
 License: GPL v2 or later
 */
 
